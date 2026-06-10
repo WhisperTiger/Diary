@@ -779,6 +779,14 @@ function init(staticryptConfig, templateConfig) {
                 }
                 if (!isSuccessful) {
             isSuccessful = await decryptOnLoadFromRememberMe();
+            // remember-me 解密成功后也初始化同步
+            if (isSuccessful) {
+                setTimeout(() => {
+                    if (typeof initSyncAfterDecrypt === 'function') {
+                        initSyncAfterDecrypt();
+                    }
+                }, 100);
+            }
         }
 
         return { isSuccessful };
@@ -956,6 +964,13 @@ exports.init = init;
 
                 if (!isSuccessful) {
                     alert(templateError);
+                } else {
+                    // 解密成功后初始化同步
+                    setTimeout(() => {
+                        if (typeof initSyncAfterDecrypt === 'function') {
+                            initSyncAfterDecrypt();
+                        }
+                    }, 100);
                 }
             });
         </script>
