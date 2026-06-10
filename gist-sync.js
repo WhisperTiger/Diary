@@ -113,13 +113,41 @@ class GistSyncClient {
   }
 
   /**
-   * 上传本地数据到 Gist
+   * 上传本地数据到 Gist（先拉取合并，避免覆盖其他设备的更新）
    */
   async push() {
     if (!this.isConfigured()) return { success: false, message: '未配置同步' };
 
     try {
-      const localData = localStorage.getItem('diary_data') || '{}';
+      // 1. 先从 Gist 拉取最新版本
+      const fetchResp = await fetch(`${this.GIST_API}/${this._gistId}`, {
+        headers: { 'Authorization': `token ${this._token}` }
+      });
+      if (!fetchResp.ok) throw new Error('拉取云端失败');
+      const gist = await fetchResp.json();
+      const file = gist.files[this.GIST_FILENAME];
+      const remote = file ? JSON.parse(file.content) : {};
+
+      // 2. 读取本地数据
+      let local = {};
+      try {
+        const raw = localStorage.getItem('diary_data');
+        local = raw ? JSON.parse(raw) : {};
+      } catch (e) { local = {}; }
+
+      // 3. 三方合并：本地 + 云端 → 以 updatedAt 较新的为准
+      const merged = { ...remote };
+      for (const [date, entry] of Object.entries(local)) {
+        const remoteEntry = remote[date];
+        if (!remoteEntry ||
+            new Date(entry.updatedAt || 0) >= new Date(remoteEntry.updatedAt || 0)) {
+          merged[date] = entry;
+        }
+      }
+
+      // 4. 更新本地并上传
+      localStorage.setItem('diary_data', JSON.stringify(merged));
+
       const resp = await fetch(`${this.GIST_API}/${this._gistId}`, {
         method: 'PATCH',
         headers: {
@@ -127,7 +155,7 @@ class GistSyncClient {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          files: { [this.GIST_FILENAME]: { content: localData } }
+          files: { [this.GIST_FILENAME]: { content: JSON.stringify(merged) } }
         })
       });
       if (!resp.ok) throw new Error('上传失败');
