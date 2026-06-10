@@ -171,8 +171,70 @@
                     font-size: 16px;
                 }
             }
-        </style>
-    </head>
+        
+            /* 同步状态动画 */
+            @keyframes slideIn {
+                from { transform: translateX(100%); opacity: 0; }
+                to { transform: translateX(0); opacity: 1; }
+            }
+            
+            @keyframes slideOut {
+                from { transform: translateX(0); opacity: 1; }
+                to { transform: translateX(100%); opacity: 0; }
+            }
+            
+            /* 同步按钮样式 */
+            .sync-button {
+                position: fixed;
+                bottom: 20px;
+                right: 20px;
+                background: #4CAF50;
+                color: white;
+                border: none;
+                border-radius: 50%;
+                width: 50px;
+                height: 50px;
+                font-size: 24px;
+                cursor: pointer;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+                z-index: 9999;
+            }
+            
+            .sync-button:hover {
+                background: #45a049;
+                transform: scale(1.1);
+            }
+            
+            /* 登录/注册表单样式 */
+            .sync-form input[type="text"],
+            .sync-form input[type="password"] {
+                width: 100%;
+                padding: 15px;
+                margin-bottom: 15px;
+                border: 1px solid #ddd;
+                border-radius: 5px;
+                font-size: 16px;
+                box-sizing: border-box;
+            }
+            
+            .sync-form a {
+                color: #4CAF50;
+                text-decoration: none;
+            }
+            
+            .sync-form a:hover {
+                text-decoration: underline;
+            }
+</style>
+    
+        <!-- Supabase SDK -->
+        <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+        <!-- 同步客户端脚本 -->
+        <script src="config.js"></script>
+        <script src="supabase-client.js"></script>
+        <script src="sync-ui.js"></script>
+        <script src="integrate-sync.js"></script>
+</head>
 
     <body class="staticrypt-body">
         <div id="staticrypt_loading" class="staticrypt-spinner-container">
@@ -706,7 +768,16 @@ function init(staticryptConfig, templateConfig) {
     async function handleDecryptOnLoad() {
         let isSuccessful = await decryptOnLoadFromUrl();
 
-        if (!isSuccessful) {
+                // 解密成功后初始化同步
+                if (isSuccessful) {
+                    // 异步初始化同步功能
+                    setTimeout(() => {
+                        if (typeof initSyncAfterDecrypt === 'function') {
+                            initSyncAfterDecrypt();
+                        }
+                    }, 100);
+                }
+                if (!isSuccessful) {
             isSuccessful = await decryptOnLoadFromRememberMe();
         }
 
@@ -888,5 +959,24 @@ exports.init = init;
                 }
             });
         </script>
-    </body>
+    
+        <!-- 同步按钮 -->
+        <button id="sync-button" class="sync-button" title="手动同步" style="display: none;">
+            🔄
+        </button>
+        
+        <script>
+            // 同步按钮点击事件
+            document.addEventListener('DOMContentLoaded', function() {
+                const syncBtn = document.getElementById('sync-button');
+                if (syncBtn) {
+                    syncBtn.addEventListener('click', async function() {
+                        if (window.syncClient && window.syncClient.isAuthenticated()) {
+                            await window.syncLocalDiaries();
+                        }
+                    });
+                }
+            });
+        </script>
+</body>
 </html>
