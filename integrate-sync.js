@@ -118,16 +118,13 @@ async function initSyncAfterDecrypt() {
     }, 1000);
   }
 
-  // 7. 监听认证变化
+  // 7. 监听认证变化（仅监听登出；登录由 onSuccess 回调处理）
   try {
     client.onAuthStateChange((event, session) => {
       console.log('[Sync] Auth 状态变化:', event);
-      if (event === 'SIGNED_IN') {
-        ui.hide();
-        loadCloudDataIntoLocal(client).then(() => setupSyncIntegration(client, ui));
-      }
       if (event === 'SIGNED_OUT') {
-        console.log('[Sync] 已登出，停止同步');
+        console.log('[Sync] 已登出');
+        // 不清除数据，用户可重新登录
       }
     });
   } catch (e) {

@@ -38,7 +38,7 @@ class DiarySupabaseClient {
         auth: {
           persistSession: true,
           autoRefreshToken: true,
-          detectSessionInUrl: true, // 支持邮箱验证回调
+          detectSessionInUrl: false, // staticrypt 使用 URL hash，必须关闭
         },
       });
       this._initialized = true;
