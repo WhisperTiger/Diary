@@ -10,3 +10,9 @@ desktop.ini
 # 备份文件
 *.bak
 diary-backup-*.json
+
+# 依赖与本地数据
+node_modules/
+server/data/
+*.db
+*.sqlite
