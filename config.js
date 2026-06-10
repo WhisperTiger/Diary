@@ -10,7 +10,7 @@ const CONFIG = {
   //   anon/public key   → 填到 SUPABASE_ANON_KEY
   //   这两个值不是秘密，可以安全地放在前端代码中
   SUPABASE_URL: 'https://ludkyjackxrqerrqksqr.supabase.co',
-  SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx1ZGt5amFja3hycWVycnFrc3FyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwOTUwNTUsImV4cCI6MjA5NjY3MTA1NX0.Pom4ss_C0l99THNhrGkeiVmJ2QbbOycuhsMKbGDz8rY'
+  SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx1ZGt5amFja3hycWVycnFrc3FyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwOTUwNTUsImV4cCI6MjA5NjY3MTA1NX0.Pom4ss_C0l99THNhrGkeiVmJ2QbbOycuhsMKbGDz8rY',
 
   // ---- 同步设置 ----
   SYNC_ENABLED: true,
