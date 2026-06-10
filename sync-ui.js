@@ -201,7 +201,9 @@ class SyncUI {
         this.showToast('登录成功，正在同步数据...', true);
         if (this._onAuthSuccess) this._onAuthSuccess();
       } catch (err) {
-        this._showError(err.message || '登录失败');
+        console.error('[Sync] 登录失败:', err);
+        const msg = err?.message || err?.error_description || err?.msg || JSON.stringify(err);
+        this._showError(msg || '登录失败');
       } finally {
         this._setLoading(false);
       }
@@ -238,7 +240,9 @@ class SyncUI {
           this._showSuccess('注册成功！请检查邮箱并点击验证链接，然后返回登录。');
         }
       } catch (err) {
-        this._showError(err.message || '注册失败');
+        console.error('[Sync] 注册失败:', err);
+        const msg = err?.message || err?.error_description || err?.msg || JSON.stringify(err);
+        this._showError(msg || '注册失败');
       } finally {
         this._setLoading(false);
       }
