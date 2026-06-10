@@ -227,13 +227,9 @@
             }
 </style>
     
-        <!-- Supabase SDK -->
-        <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-        <!-- 同步客户端脚本 (v=2 防缓存) -->
-        <script src="config.js?v=2"></script>
-        <script src="supabase-client.js?v=2"></script>
-        <script src="sync-ui.js?v=2"></script>
-        <script src="integrate-sync.js?v=2"></script>
+        <!-- 同步客户端脚本 (GitHub Gist) -->
+        <script src="gist-sync.js?v=1"></script>
+        <script src="integrate-sync.js?v=4"></script>
 </head>
 
     <body class="staticrypt-body">
@@ -975,23 +971,6 @@ exports.init = init;
             });
         </script>
     
-        <!-- 同步按钮 -->
-        <button id="sync-button" class="sync-button" title="手动同步" style="display: none;">
-            🔄
-        </button>
-        
-        <script>
-            // 同步按钮点击事件
-            document.addEventListener('DOMContentLoaded', function() {
-                const syncBtn = document.getElementById('sync-button');
-                if (syncBtn) {
-                    syncBtn.addEventListener('click', async function() {
-                        if (window.syncClient && window.syncClient.isAuthenticated()) {
-                            await window.syncLocalDiaries();
-                        }
-                    });
-                }
-            });
-        </script>
+
 </body>
 </html>

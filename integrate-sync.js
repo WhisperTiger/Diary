@@ -1,370 +1,165 @@
 // ============================================================
-// 同步集成模块 - Supabase 版本 v2
-// 将 Supabase 同步功能集成到现有的日记应用中
+// 同步集成模块 - GitHub Gist 版本
+// 无需登录，Token 配置后即可多设备同步
 // ============================================================
 
-/**
- * Toast 通知辅助（在 syncUI 可用前也能工作）
- */
-function syncToast(message, isSuccess = true) {
-  try {
-    if (window.syncUI && window.syncUI.showToast) {
-      window.syncUI.showToast(message, isSuccess);
-      return;
-    }
-  } catch (e) { /* fallback */ }
+let _syncInitialized = false;
+let _syncToastTimer = null;
 
-  const toast = document.createElement('div');
-  toast.style.cssText = `
-    position: fixed; top: 20px; right: 20px; z-index: 99999;
-    padding: 12px 24px; color: white; border-radius: 6px;
-    font-size: 14px; font-family: Arial, sans-serif;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.25);
-    background: ${isSuccess ? '#4CAF50' : '#f44336'};
-    animation: slideIn 0.3s ease-out;
+function syncToast(msg, isGood = true) {
+  const old = document.getElementById('sync-toast');
+  if (old) old.remove();
+  clearTimeout(_syncToastTimer);
+
+  const t = document.createElement('div');
+  t.id = 'sync-toast';
+  t.textContent = msg;
+  t.style.cssText = `
+    position:fixed;top:20px;right:20px;z-index:99999;
+    padding:10px 20px;border-radius:6px;font-size:14px;
+    font-family:Arial,sans-serif;pointer-events:none;
+    color:#fff;background:${isGood?'#4CAF50':'#f44336'};
+    box-shadow:0 4px 12px rgba(0,0,0,0.3);
   `;
-  toast.textContent = message;
-  document.body.appendChild(toast);
-  setTimeout(() => toast.remove(), 5000);
+  document.body.appendChild(t);
+  _syncToastTimer = setTimeout(() => t.remove(), 3000);
 }
 
-/**
- * 在 staticrypt 解密完成后调用
- */
+/** staticrypt 解密后调用 */
 async function initSyncAfterDecrypt() {
-  console.log('[Sync] === 开始初始化 Supabase 同步 ===');
+  if (_syncInitialized) return;
+  _syncInitialized = true;
 
-  // 1. 检查配置
-  if (typeof CONFIG === 'undefined') {
-    console.error('[Sync] CONFIG 对象不存在！config.js 未加载？');
-    syncToast('⚠️ config.js 未加载，无法启用同步', false);
-    return;
-  }
-  if (!CONFIG.SYNC_ENABLED) {
-    console.log('[Sync] 同步功能已禁用 (SYNC_ENABLED=false)');
-    return;
-  }
+  const gist = window.gistSync;
+  if (!gist) { console.warn('[Gist] gistSync 未加载'); return; }
 
-  // 2. 获取客户端实例
-  const client = window.diarySupabase;
-  if (!client) {
-    console.error('[Sync] diarySupabase 实例不存在！supabase-client.js 未加载？');
-    syncToast('⚠️ supabase-client.js 未加载', false);
-    return;
-  }
+  gist.loadConfig();
 
-  // 3. 初始化 Supabase
-  const initOk = client.init();
-  if (!initOk) {
-    console.error('[Sync] Supabase 客户端初始化失败');
-    if (typeof CONFIG.SUPABASE_URL === 'undefined' || CONFIG.SUPABASE_URL.indexOf('YOUR_') === 0) {
-      syncToast('⚠️ 请在 config.js 中填入 SUPABASE_URL 和密钥', false);
-    } else if (typeof supabase === 'undefined') {
-      syncToast('⚠️ Supabase SDK 加载失败，请刷新页面', false);
+  // 添加浮动同步按钮
+  addGistSyncButton(gist);
+
+  if (gist.isConfigured()) {
+    // 已配置 → 自动拉取
+    syncToast('☁️ 正在同步...');
+    const result = await gist.pull();
+    if (result.success && result.merged > 0) {
+      syncToast(`☁️ 从云端同步了 ${result.merged} 条记录`);
+      refreshDiaryIfPossible();
     } else {
-      syncToast('⚠️ Supabase 初始化失败，请检查配置', false);
+      syncToast('☁️ 数据已是最新');
     }
-    return;
+  } else {
+    // 未配置 → 显示设置引导
+    setTimeout(() => showGistSetup(gist), 1000);
   }
+}
 
-  console.log('[Sync] Supabase 客户端就绪:', CONFIG.SUPABASE_URL);
+/** 显示 Gist 配置面板 */
+function showGistSetup(gist) {
+  const old = document.getElementById('gist-setup-overlay');
+  if (old) old.remove();
 
-  // 4. 获取 UI
-  const ui = window.syncUI;
-  if (!ui) {
-    console.warn('[Sync] syncUI 未加载');
-    syncToast('⚠️ 同步界面加载失败', false);
-    return;
-  }
+  const overlay = document.createElement('div');
+  overlay.id = 'gist-setup-overlay';
+  overlay.style.cssText = `
+    position:fixed;top:0;left:0;right:0;bottom:0;z-index:99990;
+    background:rgba(0,0,0,0.6);display:flex;align-items:center;
+    justify-content:center;font-family:Arial,sans-serif;
+  `;
 
-  // 5. 注册登录成功回调
-  ui.onSuccess(async () => {
-    console.log('[Sync] 登录成功，加载云端数据...');
-    try {
-      await loadCloudDataIntoLocal(client);
-      setupSyncIntegration(client, ui);
-      syncToast('✅ 云端同步已启用', true);
-    } catch (err) {
-      console.error('[Sync] 云端数据加载失败:', err);
-      syncToast('⚠️ 云端同步失败: ' + err.message, false);
-    }
-  });
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:12px;padding:30px;max-width:420px;width:90%;box-shadow:0 8px 30px rgba(0,0,0,0.3)">
+      <h2 style="margin:0 0 8px;font-size:20px">☁️ 云端同步设置</h2>
+      <p style="margin:0 0 16px;color:#666;font-size:13px;line-height:1.6">
+        使用 GitHub Gist 同步日记到所有设备。<br>
+        <a href="https://github.com/settings/tokens/new?scopes=gist&description=diary-sync" target="_blank" style="color:#4CAF50">点击创建 Gist Token</a>（仅勾选 gist 权限）。<br>
+        <b>每台设备用同一个 Token 即可自动关联。</b>
+      </p>
+      <label style="display:block;font-size:12px;color:#333;margin-bottom:4px">GitHub Token</label>
+      <input type="password" id="gist-token-input" placeholder="ghp_..." value="${escHtml(gist.getToken())}"
+        style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:14px;box-sizing:border-box;margin-bottom:12px">
+      <div id="gist-setup-msg" style="font-size:13px;margin-bottom:12px;display:none"></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button onclick="document.getElementById('gist-setup-overlay').remove()"
+          style="padding:8px 20px;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;font-size:14px">取消</button>
+        <button id="gist-connect-btn"
+          style="padding:8px 20px;border:none;border-radius:6px;background:#4CAF50;color:#fff;cursor:pointer;font-size:14px">保存并连接</button>
+      </div>
+    </div>
+  `;
 
-  // 6. 检查认证状态
-  try {
-    const authed = await client.isAuthenticated();
-    if (authed) {
-      console.log('[Sync] 已有有效登录会话');
-      try {
-        await loadCloudDataIntoLocal(client);
-        setupSyncIntegration(client, ui);
-        syncToast('✅ 已自动登录云端同步', true);
-      } catch (err) {
-        console.error('[Sync] 加载失败:', err);
+  document.body.appendChild(overlay);
+
+  document.getElementById('gist-connect-btn').onclick = async () => {
+    const token = document.getElementById('gist-token-input').value.trim();
+    const msgEl = document.getElementById('gist-setup-msg');
+    const btn = document.getElementById('gist-connect-btn');
+
+    if (!token) { msgEl.textContent = '请输入 Token'; msgEl.style.cssText = 'color:#f44336;font-size:13px;margin-bottom:12px'; return; }
+
+    btn.disabled = true; btn.textContent = '连接中...';
+    msgEl.textContent = '正在验证并创建同步...'; msgEl.style.cssText = 'color:#333;font-size:13px;margin-bottom:12px';
+
+    const result = await gist.configure(token);
+    if (result.success) {
+      overlay.remove();
+      syncToast('☁️ 云端同步已就绪！');
+      // 首次配置后拉取
+      const pullResult = await gist.pull();
+      if (pullResult.merged > 0) {
+        syncToast(`☁️ 从云端同步了 ${pullResult.merged} 条记录`);
+        refreshDiaryIfPossible();
       }
     } else {
-      console.log('[Sync] 未登录，显示登录界面...');
-      setTimeout(() => {
-        try { ui.showLogin(); } catch (e) {
-          console.error('[Sync] 显示登录界面失败:', e);
-          syncToast('⚠️ 登录界面加载失败，请刷新重试', false);
-        }
-      }, 1000);
+      msgEl.textContent = '❌ ' + result.message;
+      msgEl.style.cssText = 'color:#f44336;font-size:13px;margin-bottom:12px';
+      btn.disabled = false; btn.textContent = '重试';
     }
-  } catch (err) {
-    console.warn('[Sync] 认证状态检查异常:', err.message);
-    setTimeout(() => {
-      try { ui.showLogin(); } catch (e) { syncToast('⚠️ 网络异常，请检查连接', false); }
-    }, 1000);
-  }
-
-  // 7. 监听认证变化（仅监听登出；登录由 onSuccess 回调处理）
-  try {
-    client.onAuthStateChange((event, session) => {
-      console.log('[Sync] Auth 状态变化:', event);
-      if (event === 'SIGNED_OUT') {
-        console.log('[Sync] 已登出');
-        // 不清除数据，用户可重新登录
-      }
-    });
-  } catch (e) {
-    console.warn('[Sync] 监听注册失败:', e);
-  }
-}
-
-/**
- * 探测日记应用使用的 localStorage key
- */
-function findDiaryStorageKey() {
-  // 尝试多个可能的 key
-  const candidates = ['diary_data', 'diaryData', 'diary-entries', 'diaryEntries', 'journal_data'];
-  for (const key of candidates) {
-    const raw = localStorage.getItem(key);
-    if (raw) {
-      try {
-        const data = JSON.parse(raw);
-        if (data && (data.entries || Array.isArray(data))) {
-          console.log('[Sync] 检测到日记数据 key:', key);
-          return { key, data, format: data.entries ? 'entries' : 'array' };
-        }
-      } catch (e) { /* 不是 JSON */ }
-      console.log('[Sync] 发现非 JSON 数据 key:', key, '跳过');
-    }
-  }
-  // 扫描所有 localStorage keys
-  console.log('[Sync] 扫描所有 localStorage keys:', Object.keys(localStorage));
-  return null;
-}
-
-/**
- * 将云端日记加载合并到本地 localStorage
- */
-async function loadCloudDataIntoLocal(client) {
-  try {
-    const cloudDiaries = await client.getDiariesInRange('2020-01-01', '2099-12-31');
-
-    if (!cloudDiaries || cloudDiaries.length === 0) {
-      console.log('[Sync] 云端无日记数据');
-      return;
-    }
-
-    console.log(`[Sync] 从云端加载了 ${cloudDiaries.length} 篇日记`);
-
-    // 探测本地数据 key
-    const localInfo = findDiaryStorageKey();
-    const storageKey = localInfo ? localInfo.key : 'diary_data';
-
-    // 解析本地数据
-    let localData = { entries: [] };
-    try {
-      const raw = localStorage.getItem(storageKey);
-      if (raw) localData = JSON.parse(raw);
-      if (!localData.entries) localData.entries = [];
-    } catch (e) {
-      localData = { entries: [] };
-    }
-
-    // 合并云端数据到本地（云端优先）
-    const localMap = new Map(localData.entries.map(e => [e.date, e]));
-    let mergeCount = 0;
-
-    for (const cloud of cloudDiaries) {
-      const local = localMap.get(cloud.date);
-      if (!local) {
-        const entry = buildLocalEntry(cloud.date, cloud.content);
-        localData.entries.push(entry);
-        mergeCount++;
-      } else if (cloud.content) {
-        const merged = buildLocalEntry(cloud.date, cloud.content);
-        Object.assign(local, merged);
-        mergeCount++;
-      }
-    }
-
-    localData.entries.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-
-    // 保存回 localStorage
-    localStorage.setItem(storageKey, JSON.stringify(localData));
-    console.log(`[Sync] 合并完成，更新 ${mergeCount} 篇 → key: ${storageKey}`);
-
-    // 尝试触发页面刷新
-    if (typeof window.refreshDiaryView === 'function') {
-      window.refreshDiaryView();
-    }
-  } catch (err) {
-    console.error('[Sync] 加载云端数据失败:', err);
-    throw err;
-  }
-}
-
-/**
- * 将云端 content JSON 转换为本地日记条目格式
- */
-function buildLocalEntry(date, content) {
-  if (!content) return { date, content: '' };
-  if (typeof content === 'string') return { date, content };
-  return {
-    date,
-    content: content.text || '',
-    mood: content.mood || '',
-    energy: content.energy || 0,
-    sleep: content.sleep || '',
-    exercise: content.exercise || [],
-    city: content.city || '',
-    weather: content.weather || '',
-    workStatus: content.workStatus || '',
-    isHoliday: content.isHoliday || false,
-    bodyStatus: content.bodyStatus || '',
-    diet: content.diet || '',
-    family: content.family || '',
-    tags: content.tags || [],
-    todos: content.todos || [],
   };
 }
 
-/**
- * 从本地 localStorage 提取当前日记条目
- */
-function getCurrentDiaryEntry() {
-  try {
-    const localInfo = findDiaryStorageKey();
-    if (!localInfo) return null;
-
-    const { data, format } = localInfo;
-    const entries = format === 'array' ? data : (data.entries || []);
-
-    if (entries.length === 0) return null;
-
-    // 尝试根据 UI 获取当前日期
-    const dateEl = document.querySelector('.date-display, #current-date, [data-date], input[type="date"]');
-    let currentDate = null;
-    if (dateEl) {
-      currentDate = dateEl.textContent?.trim() || dateEl.dataset?.date || dateEl.value;
-    }
-
-    if (currentDate) {
-      return entries.find(e => e.date === currentDate) || entries[0];
-    }
-
-    return entries[0];
-  } catch (e) {
-    console.warn('[Sync] 获取日记条目失败:', e);
-    return null;
-  }
-}
-
-/**
- * 设置自动同步集成
- */
-function setupSyncIntegration(client, ui) {
-  console.log('[Sync] 设置同步集成...');
-  addSyncButton(client, ui);
-  hookLocalStorageSave(client, ui);
-
-  if (CONFIG.SYNC_INTERVAL > 0 && CONFIG.AUTO_SYNC) {
-    setInterval(async () => {
-      try {
-        const entry = getCurrentDiaryEntry();
-        if (entry) await client.saveDiary(entry.date, entry.content);
-      } catch (e) {
-        console.warn('[Sync] 周期同步失败:', e.message);
-      }
-    }, CONFIG.SYNC_INTERVAL);
-  }
-
-  console.log('[Sync] 同步集成完成 ✅');
-}
-
-/**
- * Hook localStorage 写入（监控所有可能的 key）
- */
-function hookLocalStorageSave(client, ui) {
-  const originalSetItem = Storage.prototype.setItem;
-
-  Storage.prototype.setItem = function (key, value) {
-    originalSetItem.call(this, key, value);
-    if (CONFIG.AUTO_SYNC) {
-      triggerAutoSave(client);
-    }
-  };
-
-  console.log('[Sync] localStorage 写入监听已激活');
-}
-
-let autoSaveTimer = null;
-function triggerAutoSave(client) {
-  clearTimeout(autoSaveTimer);
-  autoSaveTimer = setTimeout(async () => {
-    try {
-      if (!(await client.isAuthenticated())) return;
-      const entry = getCurrentDiaryEntry();
-      if (entry && entry.date) {
-        await client.saveDiary(entry.date, entry.content || entry);
-        console.log('[Sync] ✅ 已同步:', entry.date);
-      }
-    } catch (err) {
-      console.warn('[Sync] 自动同步失败:', err.message);
-    }
-  }, 1500);
-}
-
-/**
- * 浮动同步按钮
- */
-function addSyncButton(client, ui) {
-  if (document.getElementById('sync-float-btn')) return;
+/** 浮动同步按钮 */
+function addGistSyncButton(gist) {
+  if (document.getElementById('gist-sync-btn')) return;
 
   const btn = document.createElement('button');
-  btn.id = 'sync-float-btn';
-  btn.innerHTML = '☁️';
-  btn.title = '同步到云端';
+  btn.id = 'gist-sync-btn';
+  btn.textContent = '☁️';
+  btn.title = '云端同步';
   btn.style.cssText = `
-    position: fixed; bottom: 24px; right: 24px; z-index: 99999;
-    background: #4CAF50; color: white; border: none; border-radius: 50%;
-    width: 52px; height: 52px; font-size: 24px; cursor: pointer;
-    box-shadow: 0 3px 12px rgba(0,0,0,0.3);
-    transition: transform 0.2s, background 0.2s;
+    position:fixed;bottom:24px;right:24px;z-index:99999;
+    background:#4CAF50;color:#fff;border:none;border-radius:50%;
+    width:48px;height:48px;font-size:22px;cursor:pointer;
+    box-shadow:0 3px 12px rgba(0,0,0,0.3);
+    transition:transform 0.2s;
   `;
-  btn.onmouseenter = () => { btn.style.transform = 'scale(1.1)'; btn.style.background = '#45a049'; };
-  btn.onmouseleave = () => { btn.style.transform = 'scale(1)'; btn.style.background = '#4CAF50'; };
+  btn.onmouseenter = () => btn.style.transform = 'scale(1.1)';
+  btn.onmouseleave = () => btn.style.transform = 'scale(1)';
 
   btn.onclick = async () => {
-    try {
-      const authed = await client.isAuthenticated();
-      if (!authed) { ui.showLogin(); return; }
-      const entry = getCurrentDiaryEntry();
-      if (entry) await client.saveDiary(entry.date, entry.content || entry);
-      await loadCloudDataIntoLocal(client);
-      syncToast('✅ 同步完成', true);
-    } catch (err) {
-      syncToast('同步失败: ' + err.message, false);
+    if (!gist.isConfigured()) { showGistSetup(gist); return; }
+    syncToast('☁️ 同步中...');
+    const pushR = await gist.push();
+    if (!pushR.success) { syncToast('上传失败: ' + pushR.message, false); return; }
+    const pullR = await gist.pull();
+    if (pullR.success) {
+      syncToast(pullR.merged > 0 ? `☁️ 同步完成 (${pullR.merged} 条更新)` : '☁️ 已是最新');
+      if (pullR.merged > 0) refreshDiaryIfPossible();
+    } else {
+      syncToast('下载失败: ' + pullR.message, false);
     }
   };
 
   document.body.appendChild(btn);
 }
 
-// 导出全局
+function refreshDiaryIfPossible() {
+  // 尝试触发日记应用刷新
+  if (typeof refreshAll === 'function') refreshAll();
+  else if (typeof loadData === 'function') { loadData(); if (typeof refreshAll === 'function') refreshAll(); }
+}
+
+function escHtml(s) { return s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
 window.initSyncAfterDecrypt = initSyncAfterDecrypt;
-window.loadCloudDataIntoLocal = loadCloudDataIntoLocal;
-window.setupSyncIntegration = setupSyncIntegration;
+window.showGistSetup = showGistSetup;
